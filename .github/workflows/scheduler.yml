@@ -22,10 +22,10 @@ jobs:
         python-version: '3.12'
         cache: 'pip'
 
-    - name: Install System Dependencies for OpenCV & Playwright
+    - name: Install System Dependencies for OpenCV
       run: |
         sudo apt-get update
-        sudo apt-get install -y libgl1-mesa-glx
+        sudo apt-get install -y libgl1 libglib2.0-0
         
     - name: Install Python Dependencies
       run: |
