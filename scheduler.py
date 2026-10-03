@@ -26,13 +26,15 @@ from notifier import TelegramNotifier
 log = logging.getLogger("simpeg_journal")
 
 
+import os
+
 def _load_env() -> dict[str, str]:
-    """Load environment variables from .env file."""
+    """Load environment variables from .env file and OS environment."""
+    env_vars: dict[str, str] = dict(os.environ)
     env_path = Path(__file__).resolve().parent / ".env"
-    env_vars: dict[str, str] = {}
 
     if not env_path.exists():
-        log.warning(f".env file tidak ditemukan di {env_path}")
+        log.warning(f".env file tidak ditemukan, menggunakan OS environment variables.")
         return env_vars
 
     with open(env_path, "r", encoding="utf-8") as f:
@@ -42,6 +44,7 @@ def _load_env() -> dict[str, str]:
                 continue
             if "=" in line:
                 key, _, value = line.partition("=")
+                # Local .env overrides OS env for local dev
                 env_vars[key.strip()] = value.strip()
 
     return env_vars
