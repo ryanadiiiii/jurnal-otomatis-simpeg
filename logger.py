@@ -1,8 +1,8 @@
 """Logging utilities for the SIMPEG journal automation app."""
 import logging
-from pathlib import Path
+from logging.handlers import RotatingFileHandler
 
-LOG_FILE = Path(__file__).parent / "simpeg_journal.log"
+import config
 
 
 def get_logger() -> logging.Logger:
@@ -11,13 +11,18 @@ def get_logger() -> logging.Logger:
         return logger
 
     logger.setLevel(logging.DEBUG)
-    formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
+    formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(name)s | %(message)s")
 
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(formatter)
 
-    file_handler = logging.FileHandler(LOG_FILE, encoding="utf-8")
+    file_handler = RotatingFileHandler(
+        config.LOG_FILE,
+        maxBytes=5 * 1024 * 1024,
+        backupCount=3,
+        encoding="utf-8",
+    )
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)
 

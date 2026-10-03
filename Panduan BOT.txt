@@ -1,0 +1,16 @@
+🎯 Langkah Selanjutnya untuk Anda
+
+Isi password di .env → SIMPEG_PASSWORD=...
+
+Test dry-run dulu:
+
+powershell
+python scheduler.py --dry-run --show-browser
+
+Setup Telegram (ikuti panduan di artifact panduan-setup.md)
+
+Setelah semua oke, ubah DRY_RUN=False di .env, lalu jalankan setup_scheduler.bat sebagai Administrator untuk jadwal otomatis.
+
+Selamat! Bot Anda sekarang bisa jalan sendiri setiap hari kerja tanpa perlu dibuka sama sekali! 🤖
+
+https://api.telegram.org/8961261498:AAE7ssmQWNcEr78_z6b76pi2OfJu0sLZpA4/getUpdates

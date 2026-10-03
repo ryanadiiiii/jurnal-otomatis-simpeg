@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.env
+*.log
+debug/
+captcha*.png
+build/
+dist/
+*.spec
+.ipynb_checkpoints/
+.vscode/
