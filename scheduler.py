@@ -125,12 +125,29 @@ def run_scheduled(
     return results
 
 
+def wait_for_internet(timeout: int = 120) -> bool:
+    """Wait for internet connection to be available."""
+    import socket
+    import time
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            # Try to connect to Google DNS
+            socket.create_connection(("8.8.8.8", 53), timeout=3)
+            return True
+        except OSError:
+            time.sleep(5)
+    return False
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="SIMPEG Jurnal Harian - Scheduled Runner")
     parser.add_argument("--dry-run", action="store_true", help="Test mode (tidak submit)")
     parser.add_argument("--today-only", action="store_true", help="Hanya isi hari ini")
     parser.add_argument("--show-browser", action="store_true", help="Tampilkan browser")
     args = parser.parse_args()
+
+    # Wait for internet connection first (max 2 minutes)
+    wait_for_internet(timeout=120)
 
     # Setup logging
     logging.basicConfig(
