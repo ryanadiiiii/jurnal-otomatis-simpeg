@@ -125,25 +125,60 @@ def run_scheduled(
     return results
 
 
+def run_absensi_scheduled(
+    nip: str,
+    password: str,
+    mode: str = "datang",
+    dry_run: bool = False,
+    show_browser: bool = False,
+    latitude: float = -8.5925,
+    longitude: float = 116.0947,
+) -> dict[str, str]:
+    """Run the attendance automation.
+
+    Args:
+        mode: 'datang' for morning check-in, 'pulang' for afternoon check-out.
+    """
+    from absensi import AbsensiAutomator
+
+    automator = AbsensiAutomator(
+        username=nip,
+        password=password,
+        mode=mode,
+        latitude=latitude,
+        longitude=longitude,
+        show_browser=show_browser,
+        dry_run=dry_run,
+    )
+
+    return automator.run_absensi()
+
+
 def wait_for_internet(timeout: int = 120) -> bool:
     """Wait for internet connection to be available."""
     import socket
-    import time
-    start_time = time.time()
-    while time.time() - start_time < timeout:
+    import time as _time
+    start_time = _time.time()
+    while _time.time() - start_time < timeout:
         try:
-            # Try to connect to Google DNS
             socket.create_connection(("8.8.8.8", 53), timeout=3)
             return True
         except OSError:
-            time.sleep(5)
+            _time.sleep(5)
     return False
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="SIMPEG Jurnal Harian - Scheduled Runner")
     parser.add_argument("--dry-run", action="store_true", help="Test mode (tidak submit)")
     parser.add_argument("--today-only", action="store_true", help="Hanya isi hari ini")
     parser.add_argument("--show-browser", action="store_true", help="Tampilkan browser")
+    parser.add_argument(
+        "--mode",
+        choices=["jurnal", "absen-datang", "absen-pulang"],
+        default="jurnal",
+        help="Mode: jurnal (default), absen-datang, absen-pulang",
+    )
     args = parser.parse_args()
 
     # Wait for internet connection first (max 2 minutes)
@@ -166,6 +201,8 @@ def main() -> None:
     telegram_token = env.get("TELEGRAM_BOT_TOKEN", "")
     telegram_chat_id = env.get("TELEGRAM_CHAT_ID", "")
     env_dry_run = env.get("DRY_RUN", "True").lower() in ("true", "1", "yes")
+    latitude = float(env.get("OFFICE_LATITUDE", "-8.5925"))
+    longitude = float(env.get("OFFICE_LONGITUDE", "116.0947"))
 
     # CLI --dry-run flag overrides .env
     dry_run = args.dry_run or env_dry_run
@@ -177,44 +214,82 @@ def main() -> None:
     # Telegram notifier
     notifier = TelegramNotifier(bot_token=telegram_token, chat_id=telegram_chat_id)
 
+    mode_label = {
+        "jurnal": "📋 Jurnal Harian",
+        "absen-datang": "🟢 Absen Datang (Jumat)",
+        "absen-pulang": "🔴 Absen Pulang (Jumat)",
+    }[args.mode]
+
     log.info("=" * 60)
-    log.info("SIMPEG Jurnal Harian Otomatis - Scheduled Run")
+    log.info(f"SIMPEG Otomatis - {mode_label}")
     log.info(f"Mode: {'DRY RUN' if dry_run else 'PRODUKSI'}")
     log.info(f"Telegram: {'Aktif' if notifier.is_configured else 'Tidak dikonfigurasi'}")
     log.info("=" * 60)
 
     try:
-        results = run_scheduled(
-            nip=nip,
-            password=password,
-            dry_run=dry_run,
-            today_only=args.today_only,
-            show_browser=args.show_browser,
-        )
+        if args.mode == "jurnal":
+            results = run_scheduled(
+                nip=nip,
+                password=password,
+                dry_run=dry_run,
+                today_only=args.today_only,
+                show_browser=args.show_browser,
+            )
 
-        log.info(f"Hasil: {results}")
+            log.info(f"Hasil: {results}")
 
-        # Send Telegram notification
-        if notifier.is_configured:
-            notifier.send_results(results, dry_run=dry_run)
+            # Send Telegram notification
+            if notifier.is_configured:
+                notifier.send_results(results, dry_run=dry_run)
+
+            # Exit with error code if any date failed
+            has_failure = any(v.startswith("failed") for v in results.values())
+            sys.exit(1 if has_failure else 0)
+
         else:
-            log.info("Telegram belum dikonfigurasi. Tambahkan TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_ID di .env")
+            # Absensi mode
+            absen_mode = "datang" if args.mode == "absen-datang" else "pulang"
+            result = run_absensi_scheduled(
+                nip=nip,
+                password=password,
+                mode=absen_mode,
+                dry_run=dry_run,
+                show_browser=args.show_browser,
+                latitude=latitude,
+                longitude=longitude,
+            )
 
-        # Exit with error code if any date failed
-        has_failure = any(
-            v.startswith("failed") for v in results.values()
-        )
-        sys.exit(1 if has_failure else 0)
+            log.info(f"Hasil Absensi: {result}")
+
+            # Send Telegram notification
+            if notifier.is_configured:
+                status_emoji = "✅" if result["status"] in ("success", "dry_run") else "❌"
+                msg = (
+                    f"<b>SIMPEG Absensi Otomatis</b>\n"
+                    f"Mode: {mode_label}\n"
+                    f"{'📋 DRY RUN' if dry_run else '📋 PRODUKSI'}\n\n"
+                    f"{status_emoji} Status: {result['status']}\n"
+                )
+                if result.get("timestamp"):
+                    msg += f"⏰ Waktu: {result['timestamp']}\n"
+                if result.get("button"):
+                    msg += f"🔘 Tombol: {result['button']}\n"
+
+                notifier.send(msg)
+
+            has_failure = result["status"].startswith("failed")
+            sys.exit(1 if has_failure else 0)
 
     except Exception as exc:
         log.error(f"Fatal error: {exc}", exc_info=True)
 
         # Try to notify via Telegram even on fatal error
         if notifier.is_configured:
-            notifier.send(f"❌ <b>SIMPEG Jurnal Otomatis GAGAL</b>\n\nError: {exc}")
+            notifier.send(f"❌ <b>SIMPEG {mode_label} GAGAL</b>\n\nError: {exc}")
 
         sys.exit(1)
 
 
 if __name__ == "__main__":
     main()
+
