@@ -448,12 +448,28 @@ class SimpegAutomator:
 
     def _close_success_dialog_if_present(self) -> None:
         try:
+            # Click TUTUP if it exists
             dialog_button = self._make_locator(config.SELECTORS["close_dialog_button"])
-            if dialog_button.count() > 0:
+            if dialog_button.count() > 0 and dialog_button.first.is_visible():
                 dialog_button.click()
-                self._update_status("Dialog konfirmasi berhasil ditutup.")
-        except Exception:
-            log.info("Dialog konfirmasi tidak ditemukan atau tidak dapat ditutup.")
+                self._update_status("Dialog konfirmasi berhasil ditutup (TUTUP).")
+                time.sleep(1)
+            
+            # Click OK (SweetAlert) if it exists
+            ok_button = self.page.get_by_role("button", name="OK", exact=True)
+            if ok_button.count() > 0 and ok_button.first.is_visible():
+                ok_button.click()
+                self._update_status("Dialog konfirmasi berhasil ditutup (OK).")
+                time.sleep(1)
+
+            # Force remove any lingering backdrops via JS to prevent pointer events interception
+            self.page.evaluate("""
+                document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+                document.querySelectorAll('.swal2-container').forEach(el => el.remove());
+                document.body.classList.remove('modal-open', 'swal2-shown');
+            """)
+        except Exception as exc:
+            log.info(f"Pembersihan dialog konfirmasi selesai dengan log: {exc}")
 
     def _detect_duplicate_journal(self) -> bool:
         if not all(
