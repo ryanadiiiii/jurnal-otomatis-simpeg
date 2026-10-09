@@ -70,3 +70,4 @@ schtasks /Create /TN "SIMPEG Absen Pulang Jumat" /XML "%XML_PULANG%" /F >nul 2>&
 echo ✅ Opsi "jalankan segera" diaktifkan.
 echo.
 pause
+
