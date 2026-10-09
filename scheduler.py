@@ -198,8 +198,15 @@ def main() -> None:
     env = _load_env()
     nip = env.get("SIMPEG_NIP", "")
     password = env.get("SIMPEG_PASSWORD", "")
+    
+    # Telegram config
     telegram_token = env.get("TELEGRAM_BOT_TOKEN", "")
     telegram_chat_id = env.get("TELEGRAM_CHAT_ID", "")
+    
+    # Fonnte config
+    fonnte_token = env.get("FONNTE_TOKEN", "")
+    fonnte_target = env.get("FONNTE_TARGET", "")
+    
     env_dry_run = env.get("DRY_RUN", "True").lower() in ("true", "1", "yes")
     latitude = float(env.get("OFFICE_LATITUDE", "-8.5925"))
     longitude = float(env.get("OFFICE_LONGITUDE", "116.0947"))
@@ -211,8 +218,10 @@ def main() -> None:
         log.error("SIMPEG_NIP dan SIMPEG_PASSWORD harus diisi di file .env")
         sys.exit(1)
 
-    # Telegram notifier
-    notifier = TelegramNotifier(bot_token=telegram_token, chat_id=telegram_chat_id)
+    # Notifiers
+    from notifier import TelegramNotifier, WhatsAppNotifier
+    tg_notifier = TelegramNotifier(bot_token=telegram_token, chat_id=telegram_chat_id)
+    wa_notifier = WhatsAppNotifier(token=fonnte_token, target=fonnte_target)
 
     mode_label = {
         "jurnal": "📋 Jurnal Harian",
@@ -223,7 +232,8 @@ def main() -> None:
     log.info("=" * 60)
     log.info(f"SIMPEG Otomatis - {mode_label}")
     log.info(f"Mode: {'DRY RUN' if dry_run else 'PRODUKSI'}")
-    log.info(f"Telegram: {'Aktif' if notifier.is_configured else 'Tidak dikonfigurasi'}")
+    log.info(f"Telegram: {'Aktif' if tg_notifier.is_configured else 'Tidak dikonfigurasi'}")
+    log.info(f"WhatsApp (Fonnte): {'Aktif' if wa_notifier.is_configured else 'Tidak dikonfigurasi'}")
     log.info("=" * 60)
 
     try:
@@ -238,9 +248,11 @@ def main() -> None:
 
             log.info(f"Hasil: {results}")
 
-            # Send Telegram notification
-            if notifier.is_configured:
-                notifier.send_results(results, dry_run=dry_run)
+            # Send notifications
+            if tg_notifier.is_configured:
+                tg_notifier.send_results(results, dry_run=dry_run)
+            if wa_notifier.is_configured:
+                wa_notifier.send_results(results, dry_run=dry_run)
 
             # Exit with error code if any date failed
             has_failure = any(v.startswith("failed") for v in results.values())
@@ -261,21 +273,23 @@ def main() -> None:
 
             log.info(f"Hasil Absensi: {result}")
 
-            # Send Telegram notification
-            if notifier.is_configured:
-                status_emoji = "✅" if result["status"] in ("success", "dry_run") else "❌"
-                msg = (
-                    f"<b>SIMPEG Absensi Otomatis</b>\n"
-                    f"Mode: {mode_label}\n"
-                    f"{'📋 DRY RUN' if dry_run else '📋 PRODUKSI'}\n\n"
-                    f"{status_emoji} Status: {result['status']}\n"
-                )
-                if result.get("timestamp"):
-                    msg += f"⏰ Waktu: {result['timestamp']}\n"
-                if result.get("button"):
-                    msg += f"🔘 Tombol: {result['button']}\n"
+            # Send notifications
+            status_emoji = "✅" if result["status"] in ("success", "dry_run") else "❌"
+            msg = (
+                f"<b>SIMPEG Absensi Otomatis</b>\n"
+                f"Mode: {mode_label}\n"
+                f"{'📋 DRY RUN' if dry_run else '📋 PRODUKSI'}\n\n"
+                f"{status_emoji} Status: {result['status']}\n"
+            )
+            if result.get("timestamp"):
+                msg += f"⏰ Waktu: {result['timestamp']}\n"
+            if result.get("button"):
+                msg += f"🔘 Tombol: {result['button']}\n"
 
-                notifier.send(msg)
+            if tg_notifier.is_configured:
+                tg_notifier.send(msg)
+            if wa_notifier.is_configured:
+                wa_notifier.send(msg)
 
             has_failure = result["status"].startswith("failed")
             sys.exit(1 if has_failure else 0)
@@ -283,9 +297,12 @@ def main() -> None:
     except Exception as exc:
         log.error(f"Fatal error: {exc}", exc_info=True)
 
-        # Try to notify via Telegram even on fatal error
-        if notifier.is_configured:
-            notifier.send(f"❌ <b>SIMPEG {mode_label} GAGAL</b>\n\nError: {exc}")
+        # Try to notify via Telegram/WA even on fatal error
+        error_msg = f"❌ <b>SIMPEG {mode_label} GAGAL</b>\n\nError: {exc}"
+        if tg_notifier.is_configured:
+            tg_notifier.send(error_msg)
+        if wa_notifier.is_configured:
+            wa_notifier.send(error_msg)
 
         sys.exit(1)
 

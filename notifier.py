@@ -86,3 +86,54 @@ class TelegramNotifier:
     def send_results(self, results: dict[str, str], dry_run: bool = False) -> bool:
         message = format_result_message(results, dry_run)
         return self.send(message)
+
+
+def send_whatsapp_message_fonnte(token: str, target: str, message: str) -> bool:
+    """Send a WhatsApp message via Fonnte API."""
+    if not token or not target:
+        log.warning("Fonnte token atau target belum dikonfigurasi. Notifikasi WA dilewati.")
+        return False
+
+    url = "https://api.fonnte.com/send"
+    headers = {
+        "Authorization": token
+    }
+    data = {
+        "target": target,
+        "message": message,
+        "countryCode": "62"
+    }
+
+    try:
+        resp = requests.post(url, headers=headers, data=data, timeout=15)
+        if resp.status_code == 200:
+            log.info("Notifikasi WhatsApp (Fonnte) berhasil dikirim.")
+            return True
+        else:
+            log.warning(f"Fonnte API error {resp.status_code}: {resp.text}")
+            return False
+    except requests.RequestException as exc:
+        log.warning(f"Gagal mengirim notifikasi WhatsApp (Fonnte): {exc}")
+        return False
+
+
+class WhatsAppNotifier:
+    """Wrapper class for sending WhatsApp notifications via Fonnte."""
+
+    def __init__(self, token: Optional[str] = None, target: Optional[str] = None):
+        self.token = token or ""
+        self.target = target or ""
+
+    @property
+    def is_configured(self) -> bool:
+        return bool(self.token and self.target)
+
+    def send(self, message: str) -> bool:
+        # Fonnte doesn't support HTML tags like <b> in WhatsApp, replace them with WA bold syntax (*)
+        # Replace common HTML tags with WA equivalents or remove them
+        wa_message = message.replace("<b>", "*").replace("</b>", "*")
+        return send_whatsapp_message_fonnte(self.token, self.target, wa_message)
+
+    def send_results(self, results: dict[str, str], dry_run: bool = False) -> bool:
+        message = format_result_message(results, dry_run)
+        return self.send(message)
