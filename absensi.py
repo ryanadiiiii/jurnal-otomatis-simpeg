@@ -54,22 +54,36 @@ class AbsensiAutomator(SimpegAutomator):
     def _click_absensi_button(self) -> str:
         """Click the appropriate attendance button based on mode.
         
+        Flow from recording:
+        1. Click "Absensi Online" button first
+        2. Then click "Rekam Absen Masuk" or "Rekam Absen Pulang"
+        
         Returns:
             The text of the button that was clicked.
         """
-        if self.mode == "datang":
-            button_names = ["Absen Datang", "Absensi Datang", "Absensi Online"]
+        # Step 1: Click "Absensi Online" to open the attendance panel
+        self._update_status("Mengklik tombol Absensi Online...")
+        absensi_online_btn = self.page.get_by_role("button", name="Absensi Online")
+        absensi_online_btn.wait_for(state="visible", timeout=10000)
+
+        if not self.dry_run:
+            absensi_online_btn.click()
+            time.sleep(2)
         else:
-            button_names = ["Absen Pulang", "Absensi Pulang", "Absensi Online"]
+            self._update_status("[DRY RUN] Tombol 'Absensi Online' ditemukan, tidak diklik.")
+            return "Absensi Online"
+
+        # Step 2: Click the correct attendance button
+        if self.mode == "datang":
+            button_names = ["Rekam Absen Masuk", "Absen Datang", "Absensi Datang"]
+        else:
+            button_names = ["Rekam Absen Pulang", "Absen Pulang", "Absensi Pulang"]
 
         clicked_name = None
         for name in button_names:
             try:
                 btn = self.page.get_by_role("button", name=name)
                 if btn.count() > 0 and btn.first.is_visible():
-                    if self.dry_run:
-                        self._update_status(f"[DRY RUN] Tombol '{name}' ditemukan, tidak diklik.")
-                        return name
                     btn.click()
                     clicked_name = name
                     self._update_status(f"Tombol '{name}' diklik.")
@@ -78,14 +92,12 @@ class AbsensiAutomator(SimpegAutomator):
                 continue
 
         if not clicked_name:
-            # Try generic approach - look for any button containing "Absen"
+            # Fallback: look for any button containing "Absen Masuk" or "Absen Pulang"
+            keyword = "Masuk" if self.mode == "datang" else "Pulang"
             try:
-                btn = self.page.locator("button:has-text('Absen')").first
+                btn = self.page.locator(f"button:has-text('{keyword}')").first
                 if btn.is_visible():
                     btn_text = btn.inner_text()
-                    if self.dry_run:
-                        self._update_status(f"[DRY RUN] Tombol '{btn_text}' ditemukan, tidak diklik.")
-                        return btn_text
                     btn.click()
                     clicked_name = btn_text
                     self._update_status(f"Tombol '{btn_text}' diklik.")
@@ -94,7 +106,7 @@ class AbsensiAutomator(SimpegAutomator):
 
         if not clicked_name:
             raise Exception(
-                f"Tombol absensi {'datang' if self.mode == 'datang' else 'pulang'} "
+                f"Tombol '{'Rekam Absen Masuk' if self.mode == 'datang' else 'Rekam Absen Pulang'}' "
                 f"tidak ditemukan. Mungkin bukan hari Jumat atau di luar jam absensi."
             )
 
