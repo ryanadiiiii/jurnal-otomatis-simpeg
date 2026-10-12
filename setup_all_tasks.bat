@@ -5,8 +5,20 @@ REM (Jurnal Harian + Absensi Jumat)
 REM Jalankan sebagai Administrator!
 REM ============================================
 
-set SCRIPT_DIR=d:\CODING\Jurnal Harian Otomatis
-set PYTHON_PATH=C:\Users\acer\AppData\Local\Programs\Python\Python312\python.exe
+set SCRIPT_DIR=%~dp0
+if "%SCRIPT_DIR:~-1%"=="\" set SCRIPT_DIR=%SCRIPT_DIR:~0,-1%
+
+set "PYTHON_PATH="
+for /f "delims=" %%I in ('where.exe python 2^>nul') do (
+    echo %%I | findstr /i "WindowsApps" >nul
+    if errorlevel 1 (
+        if not defined PYTHON_PATH set "PYTHON_PATH=%%I"
+    )
+)
+if not defined PYTHON_PATH set PYTHON_PATH=python.exe
+
+echo Menggunakan Folder : %SCRIPT_DIR%
+echo Menggunakan Python : %PYTHON_PATH%
 
 echo ============================================
 echo  Setup Otomatis SIMPEG - Task Scheduler
