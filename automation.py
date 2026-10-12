@@ -446,30 +446,43 @@ class SimpegAutomator:
         except Exception:
             log.info("Dialog informasi tidak ditemukan atau tidak dapat ditutup.")
 
-    def _close_success_dialog_if_present(self) -> None:
+    def _cleanup_modals_and_backdrops(self) -> None:
+        """Forcefully close any open modal, dialog, or lingering backdrop."""
         try:
-            # Click TUTUP if it exists
-            dialog_button = self._make_locator(config.SELECTORS["close_dialog_button"])
-            if dialog_button.count() > 0 and dialog_button.first.is_visible():
-                dialog_button.click()
-                self._update_status("Dialog konfirmasi berhasil ditutup (TUTUP).")
-                time.sleep(1)
-            
-            # Click OK (SweetAlert) if it exists
-            ok_button = self.page.get_by_role("button", name="OK", exact=True)
-            if ok_button.count() > 0 and ok_button.first.is_visible():
-                ok_button.click()
-                self._update_status("Dialog konfirmasi berhasil ditutup (OK).")
-                time.sleep(1)
+            # 1. Click common close/OK buttons if visible
+            for selector in [
+                "button:has-text('OK')",
+                "button:has-text('Ok')",
+                "button:has-text('TUTUP')",
+                "button:has-text('Tutup')",
+                "button:has-text('Close')",
+                ".modal .close",
+                "#button-close",
+            ]:
+                try:
+                    btn = self.page.locator(selector).first
+                    if btn.count() > 0 and btn.is_visible():
+                        btn.click(timeout=1000)
+                        time.sleep(0.5)
+                except Exception:
+                    pass
 
-            # Force remove any lingering backdrops via JS to prevent pointer events interception
+            # 2. Force remove via JavaScript
             self.page.evaluate("""
                 document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
                 document.querySelectorAll('.swal2-container').forEach(el => el.remove());
+                document.querySelectorAll('.modal').forEach(el => {
+                    el.classList.remove('in', 'show');
+                    el.style.display = 'none';
+                });
                 document.body.classList.remove('modal-open', 'swal2-shown');
             """)
+            time.sleep(0.5)
         except Exception as exc:
-            log.info(f"Pembersihan dialog konfirmasi selesai dengan log: {exc}")
+            log.info(f"Pembersihan modal selesai: {exc}")
+
+    def _close_success_dialog_if_present(self) -> None:
+        self._cleanup_modals_and_backdrops()
 
     def _detect_duplicate_journal(self) -> bool:
         if not all(
@@ -497,14 +510,26 @@ class SimpegAutomator:
                 description = row.locator(config.SELECTORS["journal_row_description"]).inner_text().strip()
                 start_hour = row.locator(config.SELECTORS["journal_row_start_hour"]).inner_text().strip()
                 end_hour = row.locator(config.SELECTORS["journal_row_end_hour"]).inner_text().strip()
-                if (
-                    description == entry["activity_description"].strip()
-                    and start_hour == entry["start_hour"].strip()
-                    and end_hour == entry["end_hour"].strip()
-                ):
+
+                desc_match = description == entry["activity_description"].strip()
+                start_match = (
+                    start_hour == entry["start_hour"].strip()
+                    or start_hour.startswith(entry["start_hour"].strip())
+                )
+                end_match = (
+                    end_hour == entry["end_hour"].strip()
+                    or end_hour.startswith(entry["end_hour"].strip())
+                )
+
+                if desc_match or (start_match and end_match):
                     return True
             except Exception:
                 continue
+
+        # If any journal row already exists on this date
+        if rows.count() >= len(self.template):
+            return True
+
         return False
 
     def _verify_submission_in_table(self) -> None:
@@ -528,11 +553,18 @@ class SimpegAutomator:
                 description = row.locator(config.SELECTORS["journal_row_description"]).inner_text().strip()
                 start_hour = row.locator(config.SELECTORS["journal_row_start_hour"]).inner_text().strip()
                 end_hour = row.locator(config.SELECTORS["journal_row_end_hour"]).inner_text().strip()
-                if (
-                    description == entry["activity_description"].strip()
-                    and start_hour == entry["start_hour"].strip()
-                    and end_hour == entry["end_hour"].strip()
-                ):
+
+                desc_match = description == entry["activity_description"].strip()
+                start_match = (
+                    start_hour == entry["start_hour"].strip()
+                    or start_hour.startswith(entry["start_hour"].strip())
+                )
+                end_match = (
+                    end_hour == entry["end_hour"].strip()
+                    or end_hour.startswith(entry["end_hour"].strip())
+                )
+
+                if desc_match or (start_match and end_match):
                     self._update_status("Entri jurnal yang dikirim telah diverifikasi muncul di tabel.")
                     return
             except Exception:
@@ -786,6 +818,9 @@ class SimpegAutomator:
 
             # Process each date
             for date_str in target_dates:
+                # Ensure no lingering modals or backdrops from previous operations
+                self._cleanup_modals_and_backdrops()
+
                 try:
                     self._update_status(f"\n{'='*40}")
                     self._update_status(f"📅 Mengisi jurnal untuk tanggal {date_str}...")
@@ -830,12 +865,8 @@ class SimpegAutomator:
                     self._save_debug_artifacts(f"multi-day-error-{date_str}", str(exc))
                     results[date_str] = f"failed: {exc}"
 
-                    # Try to close any open modal and continue to next date
-                    try:
-                        self.page.keyboard.press("Escape")
-                        time.sleep(1)
-                    except Exception:
-                        pass
+                    # Forcefully clean up any open modal / backdrop so next date is never blocked
+                    self._cleanup_modals_and_backdrops()
 
             self._set_state(AutomationState.SUCCESS)
 

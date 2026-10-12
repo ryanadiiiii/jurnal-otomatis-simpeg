@@ -64,12 +64,17 @@ def _next_weekday(d: date, direction: int = 1) -> date:
 
 
 def compute_target_dates(today: date | None = None) -> list[date]:
-    """Compute the 3 target dates: previous weekday, today, next weekday.
+    """Compute target dates respecting SIMPEG's strict +/- 1 calendar day rule.
 
-    Weekends are automatically skipped. Examples:
-    - Monday  → [Friday, Monday, Tuesday]
-    - Friday  → [Thursday, Friday, Monday]
-    - Wednesday → [Tuesday, Wednesday, Thursday]
+    SIMPEG only permits journal creation for date D when the current date
+    is in {D - 1, D, D + 1} calendar days.
+    Therefore:
+    - On Monday: Friday was 3 days ago (SIMPEG rejects it).
+      Target dates: [Monday, Tuesday]
+    - On Friday: Monday is 3 days ahead (SIMPEG rejects it).
+      Target dates: [Thursday, Friday]
+    - On Tuesday, Wednesday, Thursday:
+      Target dates: [yesterday, today, tomorrow]
     """
     if today is None:
         today = date.today()
@@ -78,10 +83,18 @@ def compute_target_dates(today: date | None = None) -> list[date]:
     if not _is_weekday(today):
         today = _next_weekday(today, direction=-1)
 
-    yesterday = _next_weekday(today, direction=-1)
-    tomorrow = _next_weekday(today, direction=+1)
+    weekday = today.weekday()  # 0=Monday, 4=Friday
 
-    return [yesterday, today, tomorrow]
+    if weekday == 0:  # Monday
+        tomorrow = _next_weekday(today, direction=+1)
+        return [today, tomorrow]
+    elif weekday == 4:  # Friday
+        yesterday = _next_weekday(today, direction=-1)
+        return [yesterday, today]
+    else:
+        yesterday = _next_weekday(today, direction=-1)
+        tomorrow = _next_weekday(today, direction=+1)
+        return [yesterday, today, tomorrow]
 
 
 def format_date_simpeg(d: date) -> str:
