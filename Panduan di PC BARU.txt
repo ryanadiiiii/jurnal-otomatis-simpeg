@@ -1,0 +1,51 @@
+
+
+Jika Anda berganti laptop baru (atau PC kantor baru), proses pemindahannya sangat mudah! Cukup ikuti **5 langkah cepat** ini:
+
+---
+
+### Langkah 1: Install Python di Laptop Baru
+1. Download installer Python terbaru (Python 3.11 atau 3.12) dari situs resmi [python.org](https://www.python.org/downloads/).
+2. ⚠️ **SANGAT PENTING**: Saat menjalankan installer, **centang kotak "Add python.exe to PATH"** di bagian bawah sebelum klik *Install Now*.
+
+---
+
+### Langkah 2: Pindahkan Folder Project
+Pilih salah satu cara yang paling nyaman:
+* **Cara Termudah (Rekomendasi)**: Copy seluruh folder `Jurnal Harian Otomatis` ini via Flashdisk atau Google Drive ke laptop baru (misalnya taruh di `C:\CODING\Jurnal Harian Otomatis`).
+  * *Keuntungannya*: File `.env` yang berisi password SIMPEG, token Telegram, dan token Fonnte Anda sudah langsung ikut terbawa.
+* **Via Git Clone**:
+  ```powershell
+  git clone https://github.com/ryanadiiiii/jurnal-otomatis-simpeg.git
+  ```
+  *(Jika pakai cara ini, buat file `.env` baru dan isi data kredensial Anda, karena file `.env` tidak di-upload ke GitHub demi keamanan).*
+
+---
+
+### Langkah 3: Install Package & Browser Playwright
+Buka **PowerShell** / **Command Prompt**, masuk ke folder project tersebut, lalu jalankan 2 perintah ini:
+
+```powershell
+pip install -r requirements.txt
+playwright install chromium
+```
+*(Tunggu beberapa menit sampai EasyOCR, Torch, dan browser Playwright selesai di-download).*
+
+---
+
+### Langkah 4: Aktifkan Otomatisasi (Task Scheduler)
+1. Buka folder project di File Explorer laptop baru.
+2. Cari file:
+   [`setup_all_tasks.bat`](file:///d:/CODING/Jurnal%20Harian%20Otomatis/setup_all_tasks.bat)
+3. **Klik kanan** → pilih **Run as Administrator**.
+
+> 💡 *Catatan:* Barusan saya sudah memperbarui file `setup_all_tasks.bat` ini agar **otomatis mendeteksi folder dan lokasi Python di laptop baru manapun**. Jadi di laptop baru, script ini langsung mengenali path-nya secara otomatis tanpa perlu diubah lagi!
+
+---
+
+### Langkah 5: Uji Coba Sekali (Dry Run)
+Di terminal, tes apakah bot sudah bisa login:
+```powershell
+python scheduler.py --dry-run
+```
+Jika muncul pesan `✅` dan ada notifikasi masuk ke WhatsApp Anda, **selamat! Laptop baru Anda sudah 100% siap dan otomatis berjalan setiap hari.** 🎉

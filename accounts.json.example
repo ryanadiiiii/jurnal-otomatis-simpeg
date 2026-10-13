@@ -1,0 +1,19 @@
+[
+  {
+    "nip": "nip_pegawai_1",
+    "password": "password_pegawai_1",
+    "nama": "Nama Pegawai 1",
+    "wa_target": "081234567890",
+    "latitude": -8.5925,
+    "longitude": 116.0947
+  },
+  {
+    "nip": "nip_pegawai_2",
+    "password": "password_pegawai_2",
+    "nama": "Nama Pegawai 2",
+    "wa_target": "082345678901",
+    "latitude": -8.5925,
+    "longitude": 116.0947
+  }
+]
+
