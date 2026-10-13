@@ -51,6 +51,7 @@ class SimpegAutomator:
         dry_run: bool | None = None,
         on_status: Callable[[str], None] | None = None,
         on_state: Callable[[AutomationState], None] | None = None,
+        activity_description_override: str | None = None,
     ):
         self.username = username
         self.password = password
@@ -67,6 +68,7 @@ class SimpegAutomator:
         self._ocr_reader = None
         self._submission_started = False
         self._duplicate_detection_available = False
+        self._activity_description_override = activity_description_override
 
     def _update_status(self, message: str) -> None:
         log.info(message)
@@ -795,6 +797,10 @@ class SimpegAutomator:
         try:
             config.validate_configuration()
             self.template = load_journal_template()
+            # Override activity_description if per-account override is set
+            if self._activity_description_override:
+                for entry in self.template:
+                    entry["activity_description"] = self._activity_description_override
         except Exception as exc:
             for d in target_dates:
                 results[d] = f"failed: Validasi konfigurasi gagal: {exc}"
@@ -890,6 +896,10 @@ class SimpegAutomator:
         try:
             config.validate_configuration()
             self.template = load_journal_template()
+            # Override activity_description if per-account override is set
+            if self._activity_description_override:
+                for entry in self.template:
+                    entry["activity_description"] = self._activity_description_override
         except Exception as exc:
             raise LoginError(f"Validasi konfigurasi gagal: {exc}") from exc
 

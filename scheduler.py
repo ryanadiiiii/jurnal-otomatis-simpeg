@@ -108,6 +108,7 @@ def run_scheduled(
     dry_run: bool = False,
     today_only: bool = False,
     show_browser: bool = False,
+    activity_description: str | None = None,
 ) -> dict[str, str]:
     """Run the journal automation for multiple dates.
 
@@ -129,6 +130,7 @@ def run_scheduled(
         password=password,
         show_browser=show_browser,
         dry_run=dry_run,
+        activity_description_override=activity_description,
     )
 
     results = automator.run_multi_day(
@@ -222,6 +224,7 @@ def _run_single_account_jurnal(
         dry_run=dry_run,
         today_only=today_only,
         show_browser=show_browser,
+        activity_description=account.get("activity_description"),
     )
 
     log.info(f"Hasil {nama}: {results}")

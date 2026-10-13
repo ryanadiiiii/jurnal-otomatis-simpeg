@@ -5,7 +5,8 @@
     "nama": "Nama Pegawai 1",
     "wa_target": "081234567890",
     "latitude": -8.5925,
-    "longitude": 116.0947
+    "longitude": 116.0947,
+    "activity_description": "Pelaksanaan layanan IT"
   },
   {
     "nip": "nip_pegawai_2",
@@ -13,7 +14,7 @@
     "nama": "Nama Pegawai 2",
     "wa_target": "082345678901",
     "latitude": -8.5925,
-    "longitude": 116.0947
+    "longitude": 116.0947,
+    "activity_description": "Narasi jurnal harian pegawai 2"
   }
 ]
-
