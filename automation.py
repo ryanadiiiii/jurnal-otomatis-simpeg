@@ -127,6 +127,8 @@ class SimpegAutomator:
             return
         self.page.set_default_timeout(config.SELECTOR_TIMEOUT)
         self.page.set_default_navigation_timeout(config.PAGE_LOAD_TIMEOUT)
+        # Auto-dismiss JavaScript alert/confirm/prompt dialogs from SIMPEG
+        self.page.on("dialog", lambda dialog: dialog.dismiss())
 
     def _verify_portal_entry_visible(self) -> bool:
         try:
@@ -272,11 +274,15 @@ class SimpegAutomator:
         if not selector:
             raise CaptchaRecognitionError("Selector captcha_image tidak dikonfigurasi."
                                          "Gunakan login manual.")
-        element = self._make_locator(selector)
-        element.wait_for(state="visible", timeout=config.TIMEOUTS["selector"])
-        temp_file = Path(tempfile.NamedTemporaryFile(delete=False, suffix=".png").name)
-        element.screenshot(path=str(temp_file))
-        return temp_file
+        try:
+            element = self._make_locator(selector)
+            element.wait_for(state="visible", timeout=10000)
+            temp_file = Path(tempfile.NamedTemporaryFile(delete=False, suffix=".png").name)
+            element.screenshot(path=str(temp_file))
+            return temp_file
+        except PlaywrightTimeoutError as exc:
+            self._cleanup_modals_and_backdrops()
+            raise CaptchaRecognitionError("Elemen captcha tidak terlihat atau tertutup modal.") from exc
 
     def _recognize_captcha(self) -> str:
         self._update_status("Memindai captcha dengan EasyOCR...")
@@ -302,6 +308,7 @@ class SimpegAutomator:
     def _refresh_captcha(self) -> None:
         """Click the captcha refresh button to get a new captcha image."""
         try:
+            self._cleanup_modals_and_backdrops()
             refresh_selector = config.SELECTORS.get("captcha_refresh_button")
             if refresh_selector:
                 refresh_button = self._make_locator(refresh_selector)
@@ -380,15 +387,18 @@ class SimpegAutomator:
 
         # Try auto-solve captcha first
         captcha_solved = False
+        consecutive_ocr_failures = 0
         for captcha_attempt in range(1, config.MAX_CAPTCHA_ATTEMPTS + 1):
             try:
                 self._update_status(f"Mencoba solve captcha otomatis (percobaan {captcha_attempt}/{config.MAX_CAPTCHA_ATTEMPTS})...")
                 captcha_answer = self._recognize_captcha()
+                consecutive_ocr_failures = 0  # Reset on successful OCR
                 if captcha_answer:
                     captcha_input = self._make_locator(config.SELECTORS["captcha_input"])
                     captcha_input.fill(captcha_answer)
                     self._update_status(f"Captcha terdeteksi: {captcha_answer}. Mengklik Login...")
                     self._click_selector("login_button")
+                    time.sleep(1)  # Wait for SIMPEG to process and dismiss any JS alert
 
                     # Check if login succeeded
                     if self._wait_for_login_result(config.TIMEOUTS["login_result"]):
@@ -396,23 +406,29 @@ class SimpegAutomator:
                         captcha_solved = True
                         break
 
-                    # Login failed, captcha might be wrong - refresh and retry
-                    self._update_status("Captcha salah, mencoba refresh...")
-                    self._refresh_captcha()
-                    time.sleep(config.TIMEOUTS["captcha_retry_delay"] / 1000.0)
-                    continue
+                    # Login failed, captcha might be wrong - try to reload page
+                    self._update_status("Captcha salah, reload halaman login...")
+                    raise CaptchaRecognitionError("Captcha salah, perlu reload halaman.")
             except CaptchaRecognitionError as exc:
-                self._update_status(f"OCR captcha gagal: {exc}")
-                self._update_status("Mencoba refresh...")
+                consecutive_ocr_failures += 1
+                self._update_status(f"OCR captcha gagal ({consecutive_ocr_failures}x): {exc}")
+                if consecutive_ocr_failures >= 2:
+                    # Page is likely broken (SIMPEG alert blocking elements)
+                    # Raise to _perform_login which will reload from scratch
+                    self._update_status("Halaman login rusak, akan reload dari awal...")
+                    raise
                 self._refresh_captcha()
                 time.sleep(config.TIMEOUTS["captcha_retry_delay"] / 1000.0)
                 continue
             except Exception as exc:
                 self._update_status(f"Error saat solve captcha: {exc}")
-                break
+                raise CaptchaRecognitionError(f"Error captcha: {exc}") from exc
 
         if not captcha_solved:
-            # Fall back to manual captcha
+            if not self.show_browser:
+                # Headless/scheduler mode — skip manual captcha, raise to retry
+                raise CaptchaRecognitionError("Captcha otomatis gagal dalam mode headless.")
+            # Fall back to manual captcha (only in GUI mode)
             self._request_manual_captcha()
 
         self._update_status("Login berhasil. Melanjutkan ke Jurnal Harian...")
