@@ -36,9 +36,12 @@ def solve_captcha(image_path: Path, reader: Reader) -> str:
 def solve_math_captcha(image_path: Path, reader: Reader) -> str:
     """Read a math captcha image and return the computed answer.
 
-    SIMPEG uses simple math captcha images (e.g. '3 + 5 = ?').
+    SIMPEG uses simple math captcha images (e.g. '68 - 3 = ?').
     This reads the image with OCR, extracts the math expression,
     and returns the computed result as a string.
+
+    Uses multiple preprocessing strategies to handle noise lines
+    that can confuse OCR (e.g. '6' misread as '5').
     """
     import cv2
     import numpy as np
@@ -50,40 +53,74 @@ def solve_math_captcha(image_path: Path, reader: Reader) -> str:
     # Upscale small captcha images for better OCR accuracy
     h, w = img.shape[:2]
     if max(h, w) < 400:
-        scale = 3
+        scale = 4  # Increased from 3 for better digit clarity
         img = cv2.resize(img, (w * scale, h * scale), interpolation=cv2.INTER_CUBIC)
 
-    # Convert to grayscale and apply threshold to remove noise lines
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY_INV)
 
-    temp_path = image_path.with_name(f"cleaned_{image_path.name}")
-    cv2.imwrite(str(temp_path), thresh)
-
+    # Step 1: Try reading raw upscaled image first (often cleanest for EasyOCR)
     try:
-        # Use allowlist to force OCR to only recognize digits and math symbols
-        results = reader.readtext(
-            str(temp_path), detail=0,
-            allowlist='0123456789+-x*=/? '
-        )
-    finally:
-        try:
-            temp_path.unlink()
-        except Exception:
-            pass
+        raw_dets = reader.readtext(str(image_path), detail=1, allowlist='0123456789+-x*=/? ')
+        if raw_dets:
+            sorted_dets = sorted(raw_dets, key=lambda r: r[0][0][0])
+            raw_text = " ".join(r[1] for r in sorted_dets).strip()
+            answer = _evaluate_math_expression(raw_text)
+            if answer is not None and 0 <= answer <= 200:
+                return str(answer)
+    except Exception:
+        pass
 
-    if not results:
-        return ""
+    # Step 2: Try multiple preprocessing strategies
+    candidates: list[tuple[str, int | None]] = []
 
-    raw_text = " ".join(results).strip()
+    for threshold_val in (120, 140, 160, 180):
+        for use_morph in (True, False):
+            _, thresh = cv2.threshold(gray, threshold_val, 255, cv2.THRESH_BINARY_INV)
 
-    # Try to extract and evaluate math expression
-    answer = _evaluate_math_expression(raw_text)
-    if answer is not None:
-        return str(answer)
+            if use_morph:
+                # Morphological opening to remove thin noise lines
+                kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+                thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
+                dilate_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+                thresh = cv2.dilate(thresh, dilate_kernel, iterations=1)
 
-    # Fallback: return cleaned OCR text (might be plain text captcha)
-    return clean_ocr_text("".join(results))
+            temp_path = image_path.with_name(f"cleaned_{image_path.name}")
+            cv2.imwrite(str(temp_path), thresh)
+
+            try:
+                results = reader.readtext(
+                    str(temp_path), detail=1,
+                    allowlist='0123456789+-x*=/? '
+                )
+            finally:
+                try:
+                    temp_path.unlink()
+                except Exception:
+                    pass
+
+            if not results:
+                continue
+
+            # Sort bounding boxes left-to-right
+            sorted_results = sorted(results, key=lambda r: r[0][0][0])
+            raw_text = " ".join(r[1] for r in sorted_results).strip()
+            answer = _evaluate_math_expression(raw_text)
+            candidates.append((raw_text, answer))
+
+            # If we found a valid math answer, check if it's reasonable
+            if answer is not None and 0 <= answer <= 200:
+                return str(answer)
+
+    # If no valid answer from any strategy, pick the first non-None answer
+    for raw_text, answer in candidates:
+        if answer is not None:
+            return str(answer)
+
+    # Last fallback: return cleaned text from first candidate
+    if candidates:
+        return clean_ocr_text(candidates[0][0].replace(" ", ""))
+
+    return ""
 
 
 def _evaluate_math_expression(text: str) -> int | None:

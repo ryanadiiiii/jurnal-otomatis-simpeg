@@ -364,8 +364,30 @@ class SimpegAutomator:
         with self.page.expect_popup() as popup_info:
             self._click_selector("portal_simpeg_hukum")
         self.page = popup_info.value
-        self.page.wait_for_load_state("domcontentloaded")
-        self.page.wait_for_url("**/devp/siap/signin.php", timeout=config.PAGE_LOAD_TIMEOUT)
+        self._set_page_defaults()  # Re-apply timeout & dialog handler on popup
+        self.page.wait_for_load_state("domcontentloaded", timeout=config.PAGE_LOAD_TIMEOUT)
+        try:
+            self.page.wait_for_url("**/devp/siap/signin.php", timeout=30000)
+        except PlaywrightTimeoutError:
+            current_url = self.page.url or ""
+            if config.SIMPEG_BASE_URL in current_url:
+                self._update_status(f"URL login berbeda dari biasanya ({current_url}), melanjutkan...")
+            else:
+                raise LoginError(f"Halaman login tidak ditemukan. URL saat ini: {current_url}")
+
+        # Check if SIMPEG server is returning maintenance message 'RELOAD BROWSER'
+        try:
+            body_text = (self.page.inner_text("body") or "").strip()
+            if "RELOAD BROWSER" in body_text:
+                raise LoginError(
+                    "Server SIMPEG sedang maintenance/sinkronisasi pasca-rekap bulanan (tampilan 'RELOAD BROWSER'). "
+                    "Akses login belum dibuka oleh pusat."
+                )
+        except LoginError:
+            raise
+        except Exception:
+            pass
+
         self._wait_for_selector("nip_input")
 
     def _fill_login_step1(self) -> None:
@@ -772,6 +794,8 @@ class SimpegAutomator:
                     self._update_status(f"Login gagal, mencoba ulang ({attempt + 1}/{config.MAX_LOGIN_ATTEMPTS})...")
                     time.sleep(config.TIMEOUTS["login_retry_delay"] / 1000.0)
                     continue
+            except LoginError:
+                raise
             except Exception as exc:
                 self._save_debug_artifacts("login-error", str(exc))
                 raise LoginError("Terjadi kesalahan saat proses login.") from exc
