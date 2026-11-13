@@ -46,16 +46,19 @@ class AbsensiAutomator(SimpegAutomator):
 
         # Click ABSENSI menu
         absensi_link = self.page.get_by_role("link", name="ABSENSI")
-        absensi_link.wait_for(state="visible", timeout=10000)
+        absensi_link.wait_for(state="visible", timeout=15000)
         absensi_link.click()
         time.sleep(2)
-        self.page.wait_for_load_state("networkidle", timeout=15000)
+        try:
+            self.page.wait_for_load_state("domcontentloaded", timeout=15000)
+        except Exception:
+            pass
 
     def _click_absensi_button(self) -> str:
         """Click the appropriate attendance button based on mode.
         
         Flow from recording:
-        1. Click "Absensi Online" button first
+        1. Click "Absensi Online" button first (or navigate to inout page)
         2. Then click "Rekam Absen Masuk" or "Rekam Absen Pulang"
         
         Returns:
@@ -63,44 +66,60 @@ class AbsensiAutomator(SimpegAutomator):
         """
         # Step 1: Click "Absensi Online" to open the attendance panel
         self._update_status("Mengklik tombol Absensi Online...")
-        absensi_online_btn = self.page.get_by_role("button", name="Absensi Online")
-        absensi_online_btn.wait_for(state="visible", timeout=10000)
+        
+        # Check if already on the inout page
+        if "/AbsensiOnline/inout" not in self.page.url:
+            try:
+                absensi_online_btn = self.page.get_by_role("button", name="Absensi Online")
+                absensi_online_btn.wait_for(state="visible", timeout=15000)
+                if not self.dry_run:
+                    absensi_online_btn.click()
+                    try:
+                        self.page.wait_for_url("**/AbsensiOnline/inout**", timeout=20000)
+                    except Exception:
+                        pass
+                else:
+                    self._update_status("[DRY RUN] Tombol 'Absensi Online' ditemukan, tidak diklik.")
+                    return "Absensi Online"
+            except Exception as e:
+                log.warning(f"Tombol 'Absensi Online' tidak ditemukan atau gagal ({e}), direct goto inout...")
+                self.page.goto(
+                    "https://simpeg.kemenkum.go.id/devp/siap/index.php/AbsensiOnline/inout",
+                    wait_until="domcontentloaded",
+                    timeout=30000,
+                )
 
-        if not self.dry_run:
-            absensi_online_btn.click()
-            time.sleep(2)
-        else:
-            self._update_status("[DRY RUN] Tombol 'Absensi Online' ditemukan, tidak diklik.")
-            return "Absensi Online"
+        # Check for 504 / 502 / RELOAD BROWSER error and reload if needed
+        content = self.page.content()
+        if "504 Gateway" in content or "502 Bad Gateway" in content or "RELOAD BROWSER" in content:
+            log.warning("Halaman absensi menampilkan 504/502/RELOAD, mencoba reload dalam 3 detik...")
+            time.sleep(3)
+            self.page.reload(wait_until="domcontentloaded", timeout=30000)
 
         # Step 2: Click the correct attendance button
         if self.mode == "datang":
-            button_names = ["Rekam Absen Masuk", "Absen Datang", "Absensi Datang"]
+            keyword = "Masuk"
+            selector = "input[value='Rekam Absen Masuk'], input[value*='Masuk'], button:has-text('Absen Masuk'), button:has-text('Masuk')"
         else:
-            button_names = ["Rekam Absen Pulang", "Absen Pulang", "Absensi Pulang"]
+            keyword = "Pulang"
+            selector = "input[value='Rekam Absen Pulang'], input[value*='Pulang'], button:has-text('Absen Pulang'), button:has-text('Pulang')"
 
         clicked_name = None
-        for name in button_names:
+        try:
+            btn = self.page.locator(selector).first
+            btn.wait_for(state="visible", timeout=25000)
+            clicked_name = btn.get_attribute("value") or btn.inner_text() or f"Absen {keyword}"
+            btn.click()
+            self._update_status(f"Tombol '{clicked_name}' diklik.")
+        except Exception as exc:
+            log.warning(f"Tombol absensi belum terlihat via selector '{selector}': {exc}. Mencoba reload 1x...")
             try:
-                btn = self.page.get_by_role("button", name=name)
-                if btn.count() > 0 and btn.first.is_visible():
-                    btn.click()
-                    clicked_name = name
-                    self._update_status(f"Tombol '{name}' diklik.")
-                    break
-            except Exception:
-                continue
-
-        if not clicked_name:
-            # Fallback: look for any button containing "Absen Masuk" or "Absen Pulang"
-            keyword = "Masuk" if self.mode == "datang" else "Pulang"
-            try:
-                btn = self.page.locator(f"button:has-text('{keyword}')").first
-                if btn.is_visible():
-                    btn_text = btn.inner_text()
-                    btn.click()
-                    clicked_name = btn_text
-                    self._update_status(f"Tombol '{btn_text}' diklik.")
+                self.page.reload(wait_until="domcontentloaded", timeout=25000)
+                btn = self.page.locator(selector).first
+                btn.wait_for(state="visible", timeout=20000)
+                clicked_name = btn.get_attribute("value") or btn.inner_text() or f"Absen {keyword}"
+                btn.click()
+                self._update_status(f"Tombol '{clicked_name}' diklik setelah reload.")
             except Exception:
                 pass
 

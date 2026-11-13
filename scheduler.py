@@ -299,6 +299,11 @@ def main() -> None:
         default="jurnal",
         help="Mode: jurnal (default), absen-datang, absen-pulang",
     )
+    parser.add_argument(
+        "--accounts",
+        nargs="+",
+        help="Filter akun berdasarkan nama atau NIP (contoh: --accounts ryan fania)",
+    )
     args = parser.parse_args()
 
     # Wait for internet connection first (max 2 minutes)
@@ -339,6 +344,17 @@ def main() -> None:
     # Check for multi-account mode
     accounts = load_accounts()
     is_multi = accounts is not None and len(accounts) > 0
+
+    if is_multi and args.accounts:
+        filter_terms = [t.lower() for t in args.accounts]
+        accounts = [
+            acc for acc in accounts
+            if any(t in acc.get("nama", "").lower() or t in acc.get("nip", "") for t in filter_terms)
+        ]
+        if not accounts:
+            log.error(f"Tidak ada akun yang cocok dengan filter: {args.accounts}")
+            sys.exit(1)
+        log.info(f"Filter akun aktif: {args.accounts} -> {len(accounts)} akun diproses ({[a.get('nama') for a in accounts]})")
 
     if is_multi:
         log.info("=" * 60)
