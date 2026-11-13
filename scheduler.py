@@ -306,10 +306,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # Wait for internet connection first (max 2 minutes)
-    wait_for_internet(timeout=120)
-
-    # Setup logging
+    # Setup logging first so early events are recorded
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -318,6 +315,9 @@ def main() -> None:
             logging.StreamHandler(),
         ],
     )
+
+    # Wait for internet connection first (max 2 minutes)
+    wait_for_internet(timeout=120)
 
     # Load .env for shared config (Fonnte token, Telegram, DRY_RUN)
     env = _load_env()
